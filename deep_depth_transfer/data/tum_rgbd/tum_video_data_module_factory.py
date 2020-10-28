@@ -37,3 +37,11 @@ class TumVideoDataModuleFactory(object):
                                            batch_size=batch_size,
                                            num_workers=num_workers,
                                            split=split)
+
+    def make_data_module_from_params(self, params):
+        transform_manager_parameters = {
+            "filters": params.transform_filters,
+            "normalize": params.normalize
+        }
+        return self.make_data_module(transform_manager_parameters, params.image_size, params.split,
+                                     params.batch_size, params.num_workers, params.device)

@@ -89,6 +89,6 @@ class MultiUnsupervisedDepthModel(UnsupervisedDepthModel):
             else:
                 inner_depths = [self._down_samples[level](x)[None] for x in depths]
             inner_images = [self._up_samples[level](x[level]) for x in inner_depth_results]
-            figure = show_inner_spatial_loss(inner_images, inner_depths, criterion.get_cameras_calibration(),
-                                             dpi=100)
-            self.logger.log_figure(f"inner_loss_{level}", figure, self.global_step)
+            # figure = show_inner_spatial_loss(inner_images, inner_depths, criterion.get_cameras_calibration(),
+            #                                  dpi=100)
+            # self.logger.log_figure(f"inner_loss_{level}", figure, self.global_step)

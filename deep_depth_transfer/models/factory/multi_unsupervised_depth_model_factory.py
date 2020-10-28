@@ -1,6 +1,6 @@
 from .. import PoseNetResNet, DepthNetResNet, MultiUnsupervisedDepthModel, MultiDepthNet
 from ... import ResultVisualizer
-from ...criterion import UnsupervisedCriterion
+from ...criterion import UnsupervisedCriterion, MonoUnsupervisedCriterion
 
 
 class MultiUnsupervisedDepthModelFactory(object):
@@ -37,5 +37,44 @@ class MultiUnsupervisedDepthModelFactory(object):
             criterion,
             inner_criterions=inner_criterions,
             result_visualizer=result_visualizer,
+        )
+        return model
+
+    @staticmethod
+    def make_mono_model(params, cameras_calibration):
+        pose_net = PoseNetResNet()
+        if params.depth_down_sample == "net":
+            depth_net = MultiDepthNet()
+        else:
+            depth_net = DepthNetResNet()
+        criterion = MonoUnsupervisedCriterion(cameras_calibration)
+
+        result_visualizer = ResultVisualizer(cameras_calibration=cameras_calibration,
+                                             is_show_synthesized=params.is_show_synthesized)
+
+        inner_criterions = {}
+        for level in params.levels:
+            if params.depth_down_sample == "up":
+                cameras_calibration = cameras_calibration
+            else:
+                cameras_calibration = cameras_calibration.calculate_scaled_cameras_calibration(
+                    scale=2 ** (level + 1),
+                    image_size=params.image_size
+                )
+            inner_criterions[level] = MonoUnsupervisedCriterion(
+                cameras_calibration,
+                lambda_s=params.inner_lambda_s,
+                smooth_loss=False
+            )
+        model = MultiUnsupervisedDepthModel(
+            params,
+            pose_net,
+            depth_net,
+            criterion,
+            inner_criterions=inner_criterions,
+            result_visualizer=result_visualizer,
+            mono=params.mono,
+            stereo=params.stereo,
+            use_ground_truth_poses=params.use_poses
         )
         return model

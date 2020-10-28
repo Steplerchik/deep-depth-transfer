@@ -9,7 +9,9 @@ class MonoUnsupervisedCriterion(nn.Module):
     def __init__(self,
                  cameras_calibration: CamerasCalibration,
                  lambda_s=0.85,
-                 lambda_smoothness=1.0):
+                 lambda_smoothness=1.0,
+                 smooth_loss=True,
+                 ):
         super(MonoUnsupervisedCriterion, self).__init__()
 
         self._temporal_consistency_loss = TemporalPhotometricConsistencyLoss(
@@ -17,16 +19,21 @@ class MonoUnsupervisedCriterion(nn.Module):
             cameras_calibration.right_camera_matrix,
             lambda_s,
         )
-        self._inverse_depth_smoothness_loss = InverseDepthSmoothnessLoss(
-            lambda_smoothness,
-        )
+        if smooth_loss:
+            self._inverse_depth_smoothness_loss = InverseDepthSmoothnessLoss(
+                lambda_smoothness,
+            )
+        else:
+            self._inverse_depth_smoothness_loss = None
+        self._cameras_calibration = cameras_calibration
+
+    def get_cameras_calibration(self):
+        return self._cameras_calibration
 
     def forward(self, images, depths, transformations):
         current_image, next_image = images
         current_depth, next_depth = depths
         current_transform, next_transform = transformations
-
-        smoothness_losses = [self._inverse_depth_smoothness_loss(x, y) for x, y in zip(depths, images)]
 
         temporal_loss = self._temporal_consistency_loss(
             current_image,
@@ -41,7 +48,11 @@ class MonoUnsupervisedCriterion(nn.Module):
 
         losses = {
             "temporal_loss": temporal_loss,
-            "smooth_loss": sum(smoothness_losses) / len(smoothness_losses),
-            "loss": temporal_loss + sum(smoothness_losses) / len(smoothness_losses)
+            "loss": 0
         }
+        if self._inverse_depth_smoothness_loss is not None:
+            smoothness_losses = [self._inverse_depth_smoothness_loss(x, y) for x, y in zip(depths, images)]
+            losses["smooth_loss"] = sum(smoothness_losses) / len(smoothness_losses)
+            losses["loss"]: temporal_loss + sum(smoothness_losses) / len(smoothness_losses)
+
         return losses

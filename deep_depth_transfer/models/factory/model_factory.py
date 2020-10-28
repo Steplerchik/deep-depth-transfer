@@ -14,3 +14,14 @@ class ModelFactory(object):
             return UnsupervisedDepthModelFactory().make_model(params, cameras_calibration)
         else:
             raise ValueError(f"Unknown model name {params.model_name}")
+
+    @staticmethod
+    def make_mono_model(params, cameras_calibration):
+        if params.model_name == "multi_depth":
+            return MultiUnsupervisedDepthModelFactory().make_mono_model(params, cameras_calibration)
+        elif params.model_name == "scaled_depth":
+            return ScaledUnsupervisedDepthModelFactory().make_mono_model(params, cameras_calibration)
+        elif params.model_name == "unsupervised_depth":
+            return UnsupervisedDepthModelFactory().make_mono_model(params, cameras_calibration)
+        else:
+            raise ValueError(f"Unknown model name {params.model_name}")
