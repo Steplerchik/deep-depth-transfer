@@ -6,7 +6,7 @@ from torchvision import models
 class UnetUpBlockResNet(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3):
         super().__init__()
-        
+
         self.upsample = nn.Upsample(scale_factor=2)
         self.convs = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=1, padding_mode='reflect'),
@@ -14,14 +14,15 @@ class UnetUpBlockResNet(nn.Module):
             nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, padding=1, padding_mode='reflect'),
             nn.ELU(),
         )
-        
+
     def forward(self, x, x_bridge):
         x_up = self.upsample(x)
         x_concat = torch.cat([x_up, x_bridge], dim=1)
         out = self.convs(x_concat)
 
         return out
-    
+
+
 class LastUpBlockResNet(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
@@ -30,13 +31,13 @@ class LastUpBlockResNet(nn.Module):
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.ELU(),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
-            nn.ELU()
+            nn.ELU(),
+            nn.Conv2d(out_channels, 1, 1)
         )
-        
-    def forward(self, x):
 
+    def forward(self, x):
         out = self.convs(x)
-        
+
         return out
 
 
@@ -57,7 +58,7 @@ class UnetDownBlockResNet(nn.Module):
         return out, out_skip
 
 
-class DepthNetResNet(nn.Module):
+class MultiDepthNet(nn.Module):
     def __init__(self, n_base_channels=32, max_depth=100., min_depth=1., pretrained=True, inverse_sigmoid=False):
         super().__init__()
 
@@ -67,7 +68,7 @@ class DepthNetResNet(nn.Module):
 
         self.skip_zero = nn.Conv2d(3, n_base_channels * 2, kernel_size=3, padding=1)
         self.skip_zero1 = nn.Conv2d(n_base_channels * 2, n_base_channels * 2, kernel_size=3, padding=1)
-        
+
         self.resnet_part = list(models.resnet18(pretrained=pretrained).children())
 
         self.first_level = nn.Sequential(*self.resnet_part[:3])
@@ -97,10 +98,16 @@ class DepthNetResNet(nn.Module):
             UnetUpBlockResNet(n_base_channels * 2 + n_base_channels * 8, n_base_channels * 4),  # 64 + 256 --- 128
             UnetUpBlockResNet(n_base_channels * 2 + n_base_channels * 4, 64)  # 64 + 128 --- 1
         ])
-        
-        self.last_up = LastUpBlockResNet(n_base_channels * 2, 32)
-        
-        self._last_conv = nn.Conv2d(32, 1, 1)
+
+        self._last_depth_blocks = nn.ModuleList([
+            LastUpBlockResNet(512, 32),
+            LastUpBlockResNet(256, 32),
+            LastUpBlockResNet(256, 32),
+            LastUpBlockResNet(128, 32),
+            LastUpBlockResNet(64, 32)
+        ])
+
+        self._multi_depths = []
         self._inner_result = []
 
     def depth(self, x):
@@ -109,8 +116,21 @@ class DepthNetResNet(nn.Module):
     def get_inner_result(self):
         return self._inner_result
 
+    def get_multi_depths(self):
+        return self._multi_depths
+
+    def calculate_depth(self, x):
+        if not self.inverse_sigmoid:
+            out = self.min_depth + torch.sigmoid(x) * (self.max_depth - self.min_depth)
+            return out
+        b = 1 / self.min_depth
+        a = 1 / self.max_depth - 1 / self.min_depth
+        out = 1 / (a * torch.sigmoid(x) + b)
+        return out
+
     def forward(self, x, is_return_depth=True):
         self._inner_result = []
+        self._multi_depths = []
         outputs_before_pooling = []
 
         skip_0 = torch.relu(self.skip_zero(x))
@@ -137,17 +157,11 @@ class DepthNetResNet(nn.Module):
 
         for (i, block) in enumerate(self.up_blocks):
             out = block(out, outputs_before_pooling[-i - 2])
-            
-        out = self.last_up(out)
-        out = self._last_conv(out)
+            depth = self.calculate_depth(self._last_depth_blocks[i](out))
+            if i != len(self.up_blocks) - 1:
+                self._multi_depths.append(depth)
+        self._multi_depths.reverse()
+        out = self._last_depth_blocks[-1](out)
         if not is_return_depth:
             return out
-
-        if not self.inverse_sigmoid:
-            out = self.min_depth + torch.sigmoid(out) * (self.max_depth - self.min_depth)
-        else:
-            b = 1 / self.min_depth
-            a = 1 / self.max_depth - 1 / self.min_depth
-            out = 1 / (a * torch.sigmoid(out) + b)
-
-        return out
+        return self.calculate_depth(out)
