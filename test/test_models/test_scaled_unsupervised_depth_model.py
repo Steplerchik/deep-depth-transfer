@@ -23,7 +23,7 @@ class TestUnsupervisedDepthModel(unittest.TestCase):
         dataset_folder = os.path.join(os.path.dirname(current_folder), "datasets", "kitti")
         data_module_factory = KittiDataModuleFactory(range(0, 301, 1), directory=dataset_folder)
         self._data_module = data_module_factory.make_dataset_manager(
-            final_size=(128, 384),
+            final_image_size=(128, 384),
             transform_manager_parameters={"filters": True},
             batch_size=1,
             num_workers=WORKERS_COUNT,
@@ -41,7 +41,8 @@ class TestUnsupervisedDepthModel(unittest.TestCase):
             beta2=0.9,
             scale_lr=1e-3,
             initial_log_scale=0.,
-            initial_log_min_depth=0.
+            initial_log_min_depth=0.,
+            initial_log_pose_scale=0.,
         )
         self._model = ScaledUnsupervisedDepthModel(params, pose_net, depth_net, criterion).cuda()
 
